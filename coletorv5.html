@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b43e8">
+<title>MSB Controle de Abastecimento — Zebra</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;min-height:100%;font-family:Arial,Segoe UI,sans-serif;background:#f2f3f5;color:#172033}
+body{font-size:30px}
+.topbar{height:105px;background:#0b43e8;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 28px}
+.brand{font-size:34px;font-weight:800}.user{font-size:24px;font-weight:700}.info{font-size:34px}
+.screen{padding:18px 24px 30px;max-width:1200px;margin:0 auto}
+.title{font-size:35px;font-weight:800;margin:10px 0 18px}
+.sub{font-size:24px;color:#5f6b7a;margin-bottom:18px}
+.menu{display:flex;flex-direction:column;gap:13px}
+.menu button{height:82px;border:0;border-radius:7px;background:#0b43e8;color:#fff;font-size:29px;font-weight:800;letter-spacing:.2px}
+.menu button.orange{background:#e8892d}
+.menu button.green{background:#16a34a}
+.menu button.red{background:#c62828}
+.menu button.gray{background:#67717d}
+.section{background:#fff;border:1px solid #d9dee6;border-radius:10px;padding:20px;margin-bottom:18px}
+.back{background:#e9edf2;color:#1d2a3a;border:0;border-radius:8px;padding:14px 18px;font-size:24px;font-weight:800}
+.bigbox{padding:20px;border-radius:10px;background:#f8fafc;border:2px solid #dbe3ee;margin:14px 0}
+.label{font-size:21px;color:#667085;font-weight:700}.value{font-size:34px;font-weight:900;margin-top:6px}
+.grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+input,select,textarea{width:100%;font-size:31px;padding:15px;border:2px solid #cfd6df;border-radius:8px;background:#fff}
+button.action{width:100%;padding:18px;margin-top:12px;border:0;border-radius:8px;background:#0b43e8;color:#fff;font-size:28px;font-weight:900}
+button.secondary{width:100%;padding:17px;margin-top:12px;border:0;border-radius:8px;background:#e9edf2;color:#172033;font-size:27px;font-weight:900}
+button.danger{width:100%;padding:17px;margin-top:12px;border:0;border-radius:8px;background:#c62828;color:#fff;font-size:27px;font-weight:900}
+.status{padding:14px;border-radius:8px;font-size:25px;font-weight:900;text-align:center;margin-top:12px}.wait{background:#fff0bf;color:#8b6200}.ok{background:#daf5e3;color:#126d3f}.alert{background:#ffd9d5;color:#a51f16}.block{background:#eceff2;color:#56606d}
+.rows{display:flex;flex-direction:column;gap:10px}
+.row{padding:15px;border:2px solid #e0e6ee;border-radius:8px;background:#fff}
+.row strong{font-size:27px}.row small{font-size:20px;color:#667085;display:block;margin-top:4px}
+.scanHint{font-size:22px;color:#667085;margin-top:8px}
+.scanner{border:3px dashed #0b43e8;border-radius:10px;padding:24px;text-align:center;background:#f8fbff}
+.scanner input{font-size:42px;text-align:center}
+.note{font-size:20px;color:#667085;margin-top:12px;line-height:1.35}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">MSB — CONTROLE DE ABASTECIMENTO</div>
+  <div class="user">USUÁRIO: OPERADOR</div>
+</header>
+
+<div class="screen" id="app"></div>
+
+<script>
+const SETORES={
+"124":["12401","12402"],"127":["12701","12702","12703"],"135":["13501"],
+"136":["13601","13602"],"147":["14701"],"148":["14801"],"155":["15501"],
+"156":["15601"],"159":["15901","15902"]
+};
+
+const LOTES=[
+{id:"0084747",mat:"2YA03720FO2",setor:"124",ct:"12401",ordem:"100022700001",saldo:700,etq:700,status:"AGUARDANDO CONFERÊNCIA"},
+{id:"0084746",mat:"2YA03720T2",setor:"124",ct:"12402",ordem:"100022700002",saldo:500,etq:500,status:"DISPONÍVEL"},
+{id:"0041659964",mat:"2H90720FO2",setor:"136",ct:"13602",ordem:"100022700003",saldo:300,etq:300,status:"ALERTA",fisico:290,just:"Faltavam 10 peças."},
+{id:"0041433252",mat:"2H90670FO2",setor:"155",ct:"15501",ordem:"100022700004",saldo:266,etq:266,status:"DISPONÍVEL"},
+{id:"0041695532",mat:"2H65340U1",setor:"159",ct:"15901",ordem:"100022712749",saldo:200,etq:200,status:"AGUARDANDO CONFERÊNCIA",data:"19.08.2026 08:43:27"}
+];
+
+let auditoria=[];
+
+function el(id){return document.getElementById(id)}
+function render(html){el("app").innerHTML=html}
+
+function badge(s){
+ if(s==="DISPONÍVEL") return '<div class="status ok">🟢 DISPONÍVEL</div>';
+ if(s==="ALERTA") return '<div class="status alert">🚨 ALERTA</div>';
+ if(s==="BLOQUEADO") return '<div class="status block">🔒 BLOQUEADO</div>';
+ return '<div class="status wait">🟡 AGUARDANDO CONFERÊNCIA</div>';
+}
+
+function home(){
+ render(`<div class="title">MENU PRINCIPAL</div>
+ <div class="sub">Interface adaptada para a tela Zebra. Uma operação por vez, com botões grandes.</div>
+ <div class="menu">
+   <button onclick="ler()">1 - CONFERIR / LER ETIQUETA</button>
+   <button onclick="lotes()">2 - CONSULTA DE LOTES</button>
+   <button onclick="alertas()">3 - ALERTAS</button>
+   <button onclick="rastrear()">4 - RASTREABILIDADE</button>
+   <button onclick="correcoes()" class="orange">5 - CORREÇÕES</button>
+   <button onclick="etiquetas()" class="orange">6 - REIMPRESSÃO / FRACIONAMENTO</button>
+   <button onclick="setores()">7 - CONSULTA POR SETOR</button>
+   <button onclick="cadastro()">8 - CADASTRO DE MATERIAL</button>
+   <button onclick="historico()">9 - HISTÓRICO / AUDITORIA</button>
+ </div>`);
+}
+
+function voltar(){home()}
+
+function ler(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button>
+ <div class="title">LEITURA DA ETIQUETA</div>
+ <div class="section scanner">
+   <div style="font-size:30px;font-weight:900">📷 / 🔫 LEITOR ZEBRA</div>
+   <div class="scanHint">O DataWedge pode enviar o código lido para este campo. No teste, você também pode digitar o lote.</div>
+   <input id="scanInput" autofocus placeholder="Aponte o leitor para a etiqueta">
+   <button class="action" onclick="buscarScan()">LOCALIZAR LOTE</button>
+ </div>
+ <div class="note">No ambiente real da Zebra, recomendamos usar o DataWedge em modo teclado/intent, conforme a configuração homologada pelo TI.</div>`);
+ let i=el("scanInput");
+ i.addEventListener("keydown",e=>{if(e.key==="Enter")buscarScan()});
+ setTimeout(()=>i.focus(),200);
+}
+
+function buscarScan(){
+ let q=el("scanInput").value.trim();
+ let x=LOTES.find(a=>a.id===q) || LOTES.find(a=>q && a.mat===q);
+ if(!x){render(`<button class="back" onclick="ler()">← VOLTAR</button><div class="section"><div class="status alert">CÓDIGO NÃO CADASTRADO</div><p>Valor lido: <b>${q||"—"}</b></p><button class="action" onclick="cadastro()">CADASTRAR MATERIAL / LOTE</button></div>`);return}
+ loteDetalhe(x);
+}
+
+function loteDetalhe(x){
+ render(`<button class="back" onclick="ler()">← VOLTAR</button>
+ <div class="title">LOTE ${x.id}</div>
+ <div class="grid4">
+  <div class="bigbox"><div class="label">MATERIAL</div><div class="value">${x.mat}</div></div>
+  <div class="bigbox"><div class="label">SETOR</div><div class="value">${x.setor}</div></div>
+  <div class="bigbox"><div class="label">CT</div><div class="value">${x.ct}</div></div>
+  <div class="bigbox"><div class="label">QUANTIDADE</div><div class="value">${x.etq}</div></div>
+ </div>
+ <div class="bigbox"><div class="label">ORDEM</div><div class="value">${x.ordem}</div></div>
+ ${badge(x.status)}
+ ${x.status==="AGUARDANDO CONFERÊNCIA"?'<button class="action" onclick="conferir(\''+x.id+'\')">INICIAR CONFERÊNCIA</button>':''}
+ ${x.status==="DISPONÍVEL"?'<button class="secondary" onclick="corrigir(\''+x.id+'\')">CORRIGIR</button>':''}
+ ${x.status==="ALERTA"?'<button class="danger" onclick="tratar(\''+x.id+'\')">TRATAR ALERTA</button>':''}
+ <button class="secondary" onclick="rastrearLote('${x.id}')">RASTREAR LOTE</button>`);
+}
+
+function conferir(id){
+ let x=LOTES.find(a=>a.id===id);
+ render(`<button class="back" onclick="loteDetalhe(LOTES.find(a=>a.id==='${id}'))">← VOLTAR</button>
+ <div class="title">CONFERÊNCIA DO LOTE</div>
+ <div class="section">
+  <div class="bigbox"><div class="label">LOTE</div><div class="value">${x.id}</div></div>
+  <div class="bigbox"><div class="label">SALDO SAP</div><div class="value">${x.saldo} PC</div></div>
+  <div class="bigbox"><div class="label">QUANTIDADE DA ETIQUETA</div><div class="value">${x.etq} PC</div></div>
+  <div class="bigbox"><div class="label">CONTAGEM FÍSICA</div><input id="fis" type="number" min="0" step="1" autofocus placeholder="Digite a quantidade encontrada"></div>
+  <button class="action" onclick="salvarConferencia('${id}')">CONFIRMAR CONFERÊNCIA</button>
+ </div>
+ <div class="note">A contagem física é informada pelo operador. O saldo SAP continua sendo a fonte oficial do estoque.</div>`);
+}
+
+function salvarConferencia(id){
+ let x=LOTES.find(a=>a.id===id),q=Number(el("fis").value);
+ if(!Number.isFinite(q)||q<0){alert("Informe uma quantidade válida.");return}
+ x.fisico=q;
+ const agora=new Date().toLocaleString("pt-BR");
+ if(q===x.saldo){
+   x.status="DISPONÍVEL";
+   auditoria.unshift(`${agora} — ${id} — Conferência OK — SAP ${x.saldo} / Físico ${q}`);
+   render(`<div class="title">RESULTADO</div><div class="section">${badge("DISPONÍVEL")}<div class="bigbox"><div class="label">SAP</div><div class="value">${x.saldo} PC</div></div><div class="bigbox"><div class="label">FÍSICO</div><div class="value">${q} PC</div></div><button class="action" onclick="home()">VOLTAR AO MENU</button></div>`);
+ }else{
+   x.status="ALERTA";
+   x.just="Divergência de "+(q-x.saldo)+" PC";
+   auditoria.unshift(`${agora} — ${id} — ALERTA — SAP ${x.saldo} / Físico ${q}`);
+   render(`<button class="back" onclick="home()">← MENU</button><div class="title">🚨 DIVERGÊNCIA</div>
+   <div class="section"><div class="status alert">ALERTA GERADO</div>
+   <div class="bigbox"><div class="label">SAP</div><div class="value">${x.saldo} PC</div></div>
+   <div class="bigbox"><div class="label">FÍSICO</div><div class="value">${q} PC</div></div>
+   <div class="bigbox"><div class="label">DIFERENÇA</div><div class="value">${q-x.saldo} PC</div></div>
+   <textarea id="just" placeholder="JUSTIFICATIVA OBRIGATÓRIA"></textarea>
+   <button class="danger" onclick="registrarAlerta('${id}')">REGISTRAR ALERTA</button></div>`);
+ }
+}
+
+function registrarAlerta(id){
+ let x=LOTES.find(a=>a.id===id),j=el("just").value.trim();
+ if(!j){alert("A justificativa é obrigatória.");return}
+ x.just=j;
+ auditoria.unshift(`${new Date().toLocaleString("pt-BR")} — ${id} — Justificativa — ${j}`);
+ alertas();
+}
+
+function lotes(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">CONSULTA DE LOTES</div><input id="loteBusca" placeholder="Digite lote, material ou CT" oninput="renderLoteBusca()"><div id="lotesList" class="rows"></div>`);
+ renderLoteBusca();
+}
+function renderLoteBusca(){
+ let q=(el("loteBusca").value||"").toLowerCase();
+ let arr=LOTES.filter(x=>`${x.id} ${x.mat} ${x.ct} ${x.setor}`.toLowerCase().includes(q));
+ el("lotesList").innerHTML=arr.map(x=>`<div class="row" onclick="loteDetalhe(LOTES.find(a=>a.id==='${x.id}'))"><strong>${x.id} — ${x.mat}</strong><small>Setor ${x.setor} • CT ${x.ct} • Saldo ${x.saldo} PC</small>${badge(x.status)}</div>`).join("")||'<div class="section">Nenhum lote encontrado.</div>';
+}
+
+function setores(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">CONSULTA POR SETOR</div><div class="menu">${Object.keys(SETORES).map(s=>`<button onclick="setor('${s}')">SETOR ${s}</button>`).join("")}</div>`);
+}
+function setor(s){
+ let arr=LOTES.filter(x=>x.setor===s);
+ let total=arr.reduce((n,x)=>n+x.saldo,0);
+ render(`<button class="back" onclick="setores()">← VOLTAR</button><div class="title">SETOR ${s}</div><div class="bigbox"><div class="label">SALDO TOTAL SAP</div><div class="value">${total.toLocaleString("pt-BR")} PC</div></div><div class="rows">${arr.map(x=>`<div class="row" onclick="loteDetalhe(LOTES.find(a=>a.id==='${x.id}'))"><strong>${x.id} — ${x.mat}</strong><small>CT ${x.ct} • Saldo ${x.saldo} PC</small>${badge(x.status)}</div>`).join("")||"<div class='section'>Nenhum lote.</div>"}</div>`);
+}
+
+function alertas(){
+ let arr=LOTES.filter(x=>x.status==="ALERTA"||x.status==="BLOQUEADO");
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">🚨 ALERTAS</div>${arr.map(x=>`<div class="section"><div class="title" style="font-size:28px">${x.id}</div>${badge(x.status)}<div class="bigbox"><div class="label">JUSTIFICATIVA</div><div class="value" style="font-size:27px">${x.just||"—"}</div></div><button class="danger" onclick="tratar('${x.id}')">TRATAR ALERTA</button></div>`).join("")||"<div class='section'>Nenhum alerta aberto.</div>"}`);
+}
+
+function tratar(id){
+ let x=LOTES.find(a=>a.id===id);
+ render(`<button class="back" onclick="alertas()">← VOLTAR</button><div class="title">TRATAMENTO DA OCORRÊNCIA</div>
+ <div class="section"><div class="bigbox"><div class="label">LOTE</div><div class="value">${x.id}</div></div>
+ <div class="bigbox"><div class="label">JUSTIFICATIVA DO OPERADOR</div><div class="value" style="font-size:27px">${x.just||"—"}</div></div>
+ <select id="acao"><option>Peças encontradas</option><option>Peças buscadas</option><option>Sucateamento</option><option>Estorno</option><option>Recontagem</option><option>Correção de apontamento</option><option>Outro</option></select>
+ <input id="qcorr" type="number" min="0" placeholder="Quantidade envolvida">
+ <textarea id="coment" placeholder="COMENTÁRIO / JUSTIFICATIVA FINAL"></textarea>
+ <button class="action" onclick="finalizarCorrecao('${id}')">FINALIZAR CORREÇÃO</button></div>`);
+}
+
+function corrigir(id){tratar(id)}
+function finalizarCorrecao(id){
+ let x=LOTES.find(a=>a.id===id),c=el("coment").value.trim(),q=Number(el("qcorr").value),a=el("acao").value;
+ if(!c){alert("O comentário é obrigatório.");return}
+ if(a!=="Sucateamento"&&a!=="Estorno"&&q!==x.saldo){alert("Para voltar a DISPONÍVEL, a quantidade final precisa reconciliar com o saldo SAP atual.");return}
+ x.status=(a==="Sucateamento"||a==="Estorno")?"BLOQUEADO":"DISPONÍVEL";
+ x.fisico=x.saldo;
+ auditoria.unshift(`${new Date().toLocaleString("pt-BR")} — ${id} — Correção — ${a} — ${c}`);
+ render(`<div class="title">RESULTADO DA CORREÇÃO</div><div class="section">${badge(x.status)}<div class="bigbox"><div class="label">AÇÃO</div><div class="value" style="font-size:27px">${a}</div></div><div class="bigbox"><div class="label">COMENTÁRIO</div><div class="value" style="font-size:26px">${c}</div></div><button class="action" onclick="home()">VOLTAR AO MENU</button></div>`);
+}
+
+function rastrear(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">RASTREABILIDADE</div><input id="rt" placeholder="Digite o lote"><button class="action" onclick="rastrearLote(el('rt').value)">PESQUISAR</button>`);
+}
+function rastrearLote(id){
+ let x=LOTES.find(a=>a.id===id); if(!x){alert("Lote não encontrado.");return}
+ render(`<button class="back" onclick="rastrear()">← VOLTAR</button><div class="title">FICHA DO LOTE</div>
+ <div class="section">${badge(x.status)}<div class="grid4"><div class="bigbox"><div class="label">LOTE</div><div class="value">${x.id}</div></div><div class="bigbox"><div class="label">MATERIAL</div><div class="value">${x.mat}</div></div><div class="bigbox"><div class="label">CT</div><div class="value">${x.ct}</div></div><div class="bigbox"><div class="label">SALDO SAP</div><div class="value">${x.saldo}</div></div></div>
+ <div class="bigbox"><div class="label">ÚLTIMA JUSTIFICATIVA</div><div class="value" style="font-size:25px">${x.just||"—"}</div></div></div>
+ <div class="section"><div class="title" style="font-size:29px">HISTÓRICO</div>${auditoria.filter(v=>v.includes(id)).map(v=>`<div class="row">${v}</div>`).join("")||"<div class='note'>Nenhum evento desta sessão.</div>"}</div>`);
+}
+
+function etiquetas(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">ETIQUETAS</div><input id="eq" placeholder="Digite o lote"><button class="action" onclick="etq()">CONSULTAR</button><div id="er"></div>`);
+}
+function etq(){
+ let x=LOTES.find(a=>a.id===el("eq").value.trim()); if(!x){el("er").innerHTML='<div class="section">Lote não encontrado.</div>';return}
+ el("er").innerHTML=`<div class="section"><div class="bigbox"><div class="label">SALDO SAP ATUAL</div><div class="value">${x.saldo} PC</div></div><button class="action" onclick="alert('Modo teste: reimpressão com '+${x.saldo}+' peças.')">🖨️ REIMPRIMIR</button><button class="secondary" onclick="alert('Modo teste: fracionamento validado contra o saldo SAP.')">✂️ FRACIONAR</button></div>`;
+}
+
+function cadastro(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">CADASTRO DE MATERIAL</div><div class="section"><input id="cm" placeholder="Material"><input id="cs" placeholder="Setor"><input id="cc" placeholder="Centro de trabalho"><input id="cd" placeholder="Descrição"><button class="action" onclick="salvarCad()">SALVAR CADASTRO</button></div>`);
+}
+function salvarCad(){
+ let m=el("cm").value.trim().toUpperCase(),s=el("cs").value.trim(),ct=el("cc").value.trim();
+ if(!m||!s||!ct){alert("Material, setor e CT são obrigatórios.");return}
+ auditoria.unshift(`${new Date().toLocaleString("pt-BR")} — Cadastro — ${m} — Setor ${s} — CT ${ct}`);
+ alert("Cadastro de teste realizado.");cadastro();
+}
+
+function correcoes(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">CORREÇÕES</div><div class="rows">${LOTES.filter(x=>x.status==="ALERTA"||x.status==="BLOQUEADO").map(x=>`<div class="row"><strong>${x.id}</strong><small>${x.mat} • ${x.status}</small><button class="action" onclick="tratar('${x.id}')">ABRIR CORREÇÃO</button></div>`).join("")||"<div class='section'>Nenhuma correção pendente.</div>"}</div>`);
+}
+function historico(){
+ render(`<button class="back" onclick="home()">← VOLTAR</button><div class="title">HISTÓRICO / AUDITORIA</div><div class="rows">${auditoria.map(x=>`<div class="row">${x}</div>`).join("")||"<div class='section'>Nenhum registro nesta sessão de teste.</div>"}</div>`);
+}
+
+home();
+</script>
+</body>
+</html>
